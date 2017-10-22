@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <windows.h>
-#include <Shlwapi.h>
+#include <shlwapi.h>
 #include <windowsx.h>
 #include <process.h>
 #include "w2xconv.h"

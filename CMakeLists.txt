@@ -7,25 +7,51 @@ include("CheckIncludeFileCXX")
 CMAKE_DEPENDENT_OPTION(FORCE_AMD "Whether to force detection of AMDSDK" OFF "NOT FORCE_CUDA" OFF) # When you have CUDASDK and AMDSDK installed but want to detect AMD primarly, set this ON
 CMAKE_DEPENDENT_OPTION(FORCE_CUDA "Whether to force detection of CUDASDK" OFF "NOT FORCE_AMD" OFF) # When you have CUDASDK and AMDSDK installed but want to detect CUDA primarly, set this ON
 
-add_executable(conv conv.c)
 
-if(NOT ${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
- find_package(PkgConfig)
- pkg_check_modules(OPENCV_PKG opencv)
+add_executable(conv conv.c)
+if (MINGW)
+	add_custom_command(
+		TARGET conv
+		PRE_BUILD
+		COMMAND "/usr/bin/gcc"
+		ARGS ../conv.c -o conv
+	)
+endif()
+
+# if (MINGW)
+	# message("Using Local Compiler for conv")
+	# set(CMAKE_C_COMPILER "${CMAKE_C_COMPILER_OLD}")
+	# set(CMAKE_CXX_COMPILER "${CMAKE_CXX_COMPILER_OLD}")
+# endif()
+
+if(UNIX OR APPLE OR MINGW)
+	if (MINGW)
+		find_package(PkgConfig)
+		# find_package( OpenCV REQUIRED HINTS "my/path/to/share/OpenCVConfig.cmake") 
+		set(ENV{PKG_CONFIG_PATH} "/xc/gcc7/workdir/xcompilers/mingw-w64-x86_64/lib/pkgconfig/") #todo make path configureable
+	# else()
+		# pkg_check_modules(OPENCV_PKG opencv)
+	endif()
+	pkg_check_modules(OPENCV_PKG opencv)
 endif()
 
 string(TIMESTAMP TS)
 add_definitions(-DBUILD_TS="${TS}")
 
 if (${OPENCV_PKG_FOUND})
- set(CMAKE_REQUIRED_INCLUDES ${OPENCV_PKG_INCLUDE_DIRS})
- include_directories(${OPENCV_PKG_INCLUDE_DIRS})
- link_directories(${OPENCV_PKG_LIBRARY_DIRS})
+	set(CMAKE_REQUIRED_INCLUDES ${OPENCV_PKG_INCLUDE_DIRS})
+	include_directories(${OPENCV_PKG_INCLUDE_DIRS})
+	
+	link_directories(${OPENCV_PKG_LIBRARY_DIRS} ${CMAKE_CURRENT_BINARY_DIR})
+	message("link_directories(${OPENCV_PKG_LIBRARY_DIRS} ${CMAKE_CURRENT_BINARY_DIR})}")	
+	message("FOUND OPENCV: ${OPENCV_PKG_INCLUDE_DIRS} ${OPENCV_PKG_LIBRARY_DIRS}")
+	set(HAVE_OPENCV TRUE)
 else()
- set(OPENCV_PREFIX "/usr/local" CACHE FILEPATH "OpenCV 3.x path")
- set(CMAKE_REQUIRED_INCLUDES ${OPENCV_PREFIX}/include)
- include_directories(${OPENCV_PREFIX}/include)
- link_directories(${OPENCV_PREFIX}/lib)
+	set(OPENCV_PREFIX "/usr/local" CACHE FILEPATH "OpenCV 3.x path")
+	set(CMAKE_REQUIRED_INCLUDES ${OPENCV_PREFIX}/include)
+	include_directories(${OPENCV_PREFIX}/include)
+	link_directories(${OPENCV_PREFIX}/lib)
+	message("link_directories(${OPENCV_PREFIX}/lib)")
 endif()
 
 # old stuff
@@ -42,14 +68,23 @@ if(NOT HAVE_OPENCV)
  endif()
 endif()
 
-find_library(IMGCODECS_LIBRARY NAMES opencv_imgcodecs opencv_highgui HINTS ${OPENCV_PKG_INCLUDE_DIRS} ${OPENCV_PREFIX}/lib)
+if(MINGW)
+	# message("SEARCHING FOR opencv_imgcodecs in ${OPENCV_PKG_LIBRARY_DIRS}")
+	# find_library(IMGCODECS_LIBRARY NAMES opencv_imgcodecs PATHS "${OPENCV_PKG_LIBRARY_DIRS}" NO_DEFAULT_PATH PATH_SUFFIXES "so" ".so")
+	# message("${IMGCODECS_LIBRARY}")
+	# set(IMGCODECS_LIBRARY TRUE)
+else()
+	find_library(IMGCODECS_LIBRARY NAMES opencv_imgcodecs opencv_highgui HINTS ${OPENCV_PKG_INCLUDE_DIRS} ${OPENCV_PREFIX}/lib)
+endif()
 
 if(HAVE_OPENCV)
- message("-- Found OpenCV")
- add_definitions(-DHAVE_OPENCV)
- set(OPENCV_LIBRARIES opencv_core opencv_imgproc ${IMGCODECS_LIBRARY} opencv_features2d)
+	message("-- Found OpenCV")
+	add_definitions(-DHAVE_OPENCV)
+	if(NOT MINGW)
+		set(OPENCV_LIBRARIES opencv_core opencv_imgproc ${IMGCODECS_LIBRARY} opencv_features2d)
+	endif()
 else()
- message("OpenCV not found, make sure OPENCV_PREFIX is set or on Linux, make sure the pkg-config file exists")
+	message("OpenCV not found, make sure OPENCV_PREFIX is set or on Linux, make sure the pkg-config file exists")
 endif()
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
@@ -72,7 +107,9 @@ endif()
 if(FORCE_AMD)
 	message("-- -FORCE_AMD=ON is set, not using cuda")
 else()
+	if (NOT MINGW)
 	find_package(CUDA)
+	endif()
 endif()
 
 if(CUDA_FOUND)
@@ -102,9 +139,9 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
 	set(CMAKE_CXX_FLAGS_DEBUG "/Zi /MT")
  endif()
 
- if(CMAKE_COMPILER_IS_GNUCXX)
-	SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static")
-	SET(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -static")
+ if(MINGW)
+	# SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static")
+	# SET(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -static")
  endif()
 
  if(CMAKE_SIZEOF_VOID_P EQUAL 8)
@@ -114,7 +151,8 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
  endif()
  if(MSVC14)
 	link_directories(${OPENCV_PREFIX}/${OCV_SYSTEM_DIRNAME}/${OCV_COMPILER_DIRNAME}/lib)
- else()
+ elseif(NOT MINGW)
+	message("link_directories(${OPENCV_PREFIX}/${OCV_SYSTEM_DIRNAME}/${OCV_COMPILER_DIRNAME}/staticlib)")
 	link_directories(${OPENCV_PREFIX}/${OCV_SYSTEM_DIRNAME}/${OCV_COMPILER_DIRNAME}/staticlib)
  endif()
 endif()
@@ -163,13 +201,21 @@ add_library(w2xc SHARED
  src/Env.cpp src/Buffer.cpp
 )
 
+# if(MINGW)
+	# set_target_properties(w2xc
+		# PROPERTIES
+		# PREFIX "lib"
+		# SUFFIX ".a"
+	# )
+# endif()
+
 add_dependencies(w2xc gensrcs)
 
 
 if(CMAKE_COMPILER_IS_GNUCXX OR ${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang")
  set(CMAKE_CXX_STANDARD 17)
- # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++1z")
- set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall")
+ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -L/xc/gcc7/workdir/xcompilers/mingw-w64-x86_64/x86_64-w64-mingw32/lib") #-std=c++1z
+ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -L/xc/gcc7/workdir/xcompilers/mingw-w64-x86_64/x86_64-w64-mingw32/lib")
 
  if (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
 	set(REMOVE_SYMBOL "")
@@ -197,37 +243,41 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 4)
 endif()
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
- if(CUDA_FOUND)
-	list(APPEND CUDA_NVCC_FLAGS "-Xcompiler" "/wd 4819")
- endif()
- set_target_properties(w2xc PROPERTIES PREFIX "")
- set_target_properties(w2xc PROPERTIES IMPORT_PREFIX "")
- set_target_properties(w2xc PROPERTIES IMPORT_SUFFIX ".lib")
+	if(CUDA_FOUND)
+		list(APPEND CUDA_NVCC_FLAGS "-Xcompiler" "/wd 4819")
+	endif()
+	if (NOT MINGW)
+		set_target_properties(w2xc PROPERTIES PREFIX "")
+		set_target_properties(w2xc PROPERTIES IMPORT_PREFIX "")
+		set_target_properties(w2xc PROPERTIES IMPORT_SUFFIX ".lib")
+	endif()
 else()
- # Lower GCC version to avoid #error in host_config.h
- find_program(GCC NAMES g++-4.7 g++47 g++-4.8 g++48)
- if(GCC)
-	list(APPEND CUDA_NVCC_FLAGS "-ccbin" "${GCC}")
- endif()
+	# Lower GCC version to avoid #error in host_config.h
+	find_program(GCC NAMES g++-4.7 g++47 g++-4.8 g++48)
+	if(GCC)
+		list(APPEND CUDA_NVCC_FLAGS "-ccbin" "${GCC}")
+	endif()
 endif()
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
- if(CMAKE_COMPILER_IS_GNUCXX)
-	target_link_libraries(w2xc
-	 opencv_core300 opencv_imgproc300 opencv_imgcodecs300 opencv_features2d300 libjpeg libpng libtiff libjasper opencv_hal300
-	 IlmImf zlib libwebp user32 opencv_core300 opencv_hal300) # xx 300
- elseif(MSVC14)
-	 target_link_libraries(w2xc opencv_world330 user32)
- else()
-	target_link_libraries(w2xc opencv_core300 opencv_imgproc300 opencv_imgcodecs300
-	 opencv_features2d300 ippicvmt libjpeg libpng libtiff libjasper
-	 opencv_hal300 IlmImf zlib libwebp user32 opencv_core300 opencv_imgproc300)
- endif()
-
- add_executable(w2xcr WIN32 w32-apps/w2xcr.c w32-apps/w2xcr.rc)
- target_link_libraries(w2xcr w2xc user32 shlwapi gdi32)
+	if(MINGW)
+		target_link_libraries(w2xc opencv_world330 user32) # xx 300 #"/xc/gcc7/workdir/xcompilers/mingw-w64-x86_64/x86_64-w64-mingw32/lib/libopencv_imgcodecs.dll.a" #${OPENCV_PKG_LIBRARIES} ${CMAKE_DL_LIBS}
+		get_directory_property(OUT_VAR LINK_DIRECTORIES)
+		message(STATUS "DIR: ${OUT_VAR}")
+		message("GOT HERE 999")
+	elseif(MSVC14)
+		target_link_libraries(w2xc opencv_world330 user32)
+		message("GOT HERE 555")
+	# else()
+		# message("GOT HERE 5555")
+		# target_link_libraries(w2xc opencv_core300 opencv_imgproc300 opencv_imgcodecs300 opencv_features2d300 ippicvmt libjpeg libpng libtiff libjasperopencv_hal300 IlmImf zlib libwebp user32 opencv_core300 opencv_imgproc300)
+	endif()
+	add_executable(w2xcr WIN32 w32-apps/w2xcr.c w32-apps/w2xcr.rc)
+	MESSAGE("GOT HERE")
+	target_link_libraries(w2xcr w2xc user32 shlwapi gdi32)
 else()
- target_link_libraries(w2xc ${OPENCV_LIBRARIES} ${CMAKE_DL_LIBS} pthread)
+	message("GOT HERE llll")
+	target_link_libraries(w2xc ${OPENCV_LIBRARIES} ${CMAKE_DL_LIBS} pthread)
 endif()
 
 set(CONV_EXE "$<TARGET_FILE_DIR:conv>/conv")
@@ -235,7 +285,7 @@ set(CONV_EXE "$<TARGET_FILE_DIR:conv>/conv")
 add_custom_command(
  OUTPUT modelHandler_OpenCL.cl.h
  COMMAND ${CONV_EXE} ${CMAKE_CURRENT_SOURCE_DIR}/src/modelHandler_OpenCL.cl ${CMAKE_CURRENT_BINARY_DIR}/modelHandler_OpenCL.cl.h str
- DEPENDS src/modelHandler_OpenCL.cl conv
+ DEPENDS src/modelHandler_OpenCL.cl# conv
  )
 
 set(GPU_CODE modelHandler_OpenCL.cl.h)
@@ -244,13 +294,13 @@ if(CUDA_FOUND)
  add_custom_command(
 	OUTPUT modelHandler_CUDA.ptx20.h
 	COMMAND ${CONV_EXE} modelHandler_CUDA.ptx20 modelHandler_CUDA.ptx20.h str
-	DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/modelHandler_CUDA.ptx20 conv
+	DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/modelHandler_CUDA.ptx20# conv
 	)
 
  add_custom_command(
 	OUTPUT modelHandler_CUDA.ptx30.h
 	COMMAND ${CONV_EXE} modelHandler_CUDA.ptx30 modelHandler_CUDA.ptx30.h str
-	DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/modelHandler_CUDA.ptx30 conv
+	DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/modelHandler_CUDA.ptx30# conv
 	)
 
  add_custom_command(
@@ -283,7 +333,8 @@ if (${HAVE_OPENCV})
  endif()
 
  add_executable(runtest w32-apps/runtest.c)
- target_link_libraries(runtest w2xc)
+ target_link_libraries(runtest LINK_PUBLIC w2xc)
+ # SET_TARGET_PROPERTIES(runtest PROPERTIES COMPILE_FLAGS "-lw2xc")
  add_test(runtest runtest)
 
  install(TARGETS w2xc waifu2x-converter-cpp RUNTIME DESTINATION bin LIBRARY DESTINATION "lib${LIB_SUFFIX}" ARCHIVE DESTINATION "lib${LIB_SUFFIX}" )
