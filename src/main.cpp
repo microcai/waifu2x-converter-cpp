@@ -22,7 +22,7 @@
 #include "w2xconv.h"
 
 #ifndef DEFAULT_MODELS_DIRECTORY
-#define DEFAULT_MODELS_DIRECTORY "models_rgb"
+#define DEFAULT_MODELS_DIRECTORY "/usr/share/waifu2x/"
 #endif
 
 #define _VERSION "5.2"
@@ -39,10 +39,10 @@ public:
 			{
 				std::cerr << "Brief USAGE: " << std::endl;
 
-				_shortUsage( _cmd, std::cerr );	
+				_shortUsage( _cmd, std::cerr );
 
-				std::cerr << std::endl << "For complete USAGE and HELP type: " 
-						  << std::endl << "   " << progName << " --help" 
+				std::cerr << std::endl << "For complete USAGE and HELP type: "
+						  << std::endl << "   " << progName << " --help"
 						  << std::endl << std::endl;
 				std::cerr << "Waifu2x OpenCV - Version " << _VERSION << " - https://github.com/DeadSix27/waifu2x-converter-cpp" << std::endl << std::endl;
 				std::cerr << "If you find issues or need help, visit: https://github.com/DeadSix27/waifu2x-converter-cpp/issues" << std::endl << std::endl;
@@ -180,7 +180,7 @@ std::string generate_output_location(std::string inputFileName, std::string outp
 	else if (outputFileName.find_last_of('.') < outputFileName.find_last_of('/'))
 	{
 		//e.g. ./test.d/out needs to be changed to ./test.d/out.png
-		outputFileName += ".png";
+		// outputFileName += ".png";
 	}
 	else if (outputFileName.find_last_of('.') > outputFileName.find_last_of('/')) {
 		//We may have a regular output file here or something went wrong.
